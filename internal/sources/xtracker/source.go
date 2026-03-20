@@ -45,7 +45,13 @@ func (s *Source) Init(cfg config.SourceConfig) error {
 	s.client = &http.Client{Timeout: 15 * time.Second}
 	s.accounts = cfg.Accounts
 	s.seen = make(map[string]time.Time)
-	s.cookies = config.GetSourceAPIKey("TWITTER_COOKIES")
+	// Use cookies from config; fall back to TWITTER_COOKIES env var
+	if len(cfg.Cookies) > 0 {
+		b, _ := json.Marshal(cfg.Cookies)
+		s.cookies = string(b)
+	} else {
+		s.cookies = config.GetSourceAPIKey("TWITTER_COOKIES")
+	}
 	return nil
 }
 

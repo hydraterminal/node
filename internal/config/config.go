@@ -63,6 +63,7 @@ type SourceConfig struct {
 	OpenaipKeyEnv  string        `yaml:"openaipKeyEnv,omitempty" json:"openaipKeyEnv,omitempty"`
 	ProxyURL       string        `yaml:"proxyUrl,omitempty" json:"proxyUrl,omitempty"`
 	Accounts       []string      `yaml:"accounts,omitempty" json:"accounts,omitempty"`
+	Cookies        []string      `yaml:"cookies,omitempty" json:"cookies,omitempty"`
 	Channels       []string      `yaml:"channels,omitempty" json:"channels,omitempty"`
 	MarketInterval time.Duration `yaml:"marketInterval,omitempty" json:"-"`
 }

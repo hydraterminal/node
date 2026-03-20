@@ -596,6 +596,7 @@ type jsonSourceConfig struct {
 	OpenaipKeyEnv  *string  `json:"openaipKeyEnv,omitempty"`
 	ProxyURL       *string  `json:"proxyUrl,omitempty"`
 	Accounts       []string `json:"accounts,omitempty"`
+	Cookies        []string `json:"cookies,omitempty"`
 	Channels       []string `json:"channels,omitempty"`
 	MarketInterval string   `json:"marketInterval,omitempty"`
 }
@@ -640,6 +641,9 @@ func (j *jsonSourceConfig) applyTo(target *config.SourceConfig) error {
 	}
 	if j.Accounts != nil {
 		target.Accounts = j.Accounts
+	}
+	if j.Cookies != nil {
+		target.Cookies = j.Cookies
 	}
 	if j.Channels != nil {
 		target.Channels = j.Channels
