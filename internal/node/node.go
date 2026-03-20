@@ -105,7 +105,9 @@ func New(cfg *config.Config, configPath ...string) (*Node, error) {
 
 // Run starts the node and blocks until shutdown.
 func (n *Node) Run() error {
+	fmt.Printf("Hydra Node %s\n", n.version)
 	n.logger.Info("starting Hydra node",
+		"version", n.version,
 		"mode", n.cfg.Mode,
 		"server", fmt.Sprintf("%s:%d", n.cfg.Server.Host, n.cfg.Server.Port),
 	)
