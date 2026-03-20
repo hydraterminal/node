@@ -1,8 +1,7 @@
-name: Build & Push Docker Image
+name: Build & Release
 
 on:
   push:
-    branches: [main, master]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -10,16 +9,39 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Build binaries
+        run: |
+          VERSION=${GITHUB_REF_NAME:-dev}
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          LDFLAGS="-s -w -X main.version=$VERSION -X main.buildTime=$BUILD_TIME"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o hydra-node-linux-amd64 ./cmd/hydra-node
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o hydra-node-linux-arm64 ./cmd/hydra-node
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            hydra-node-linux-amd64
+            hydra-node-linux-arm64
+          generate_release_notes: true
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -35,14 +57,13 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
