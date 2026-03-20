@@ -45,7 +45,11 @@ type Server struct {
 	metrics    *metrics.Collector
 	cfg        *config.Config
 	configPath string
+	version    string
 }
+
+// SetVersion sets the version string reported in status and metrics.
+func (s *Server) SetVersion(v string) { s.version = v }
 
 // NewServer creates a control plane handler with its own log buffer.
 func NewServer(sched *scheduler.Scheduler, logger *slog.Logger, restartFn func() error, secret string) *Server {
@@ -193,6 +197,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{
 		"status":    "running",
+		"version":   s.version,
 		"uptime":    time.Since(s.startTime).String(),
 		"startedAt": s.startTime.UTC().Format(time.RFC3339),
 		"sources":   s.scheduler.Status(),
@@ -289,9 +294,31 @@ func (s *Server) HandleLogStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Write pump — streams logs + sends pings.
+	// Send initial metrics snapshot immediately so the UI doesn't wait.
+	if s.metrics != nil {
+		snap := s.metrics.Latest()
+		metricsMsg, _ := json.Marshal(map[string]any{
+			"type": "metrics",
+			"data": map[string]any{
+				"cpuPercent":     snap.CPUPercent,
+				"memoryMB":       snap.MemoryMB,
+				"networkTxBytes": snap.NetworkTxBytes,
+				"networkRxBytes": snap.NetworkRxBytes,
+				"uptimeSeconds":  int64(time.Since(s.startTime).Seconds()),
+				"goroutines":     snap.Goroutines,
+				"version":        s.version,
+			},
+		})
+		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.WriteMessage(websocket.TextMessage, metricsMsg)
+	}
+
+	// Write pump — streams logs + metrics + sends pings.
 	pingTicker := time.NewTicker(15 * time.Second)
 	defer pingTicker.Stop()
+
+	metricsTicker := time.NewTicker(3 * time.Second)
+	defer metricsTicker.Stop()
 
 	for {
 		select {
@@ -302,6 +329,27 @@ func (s *Server) HandleLogStream(w http.ResponseWriter, r *http.Request) {
 			msg, _ := json.Marshal(map[string]any{
 				"type": "log",
 				"data": entry,
+			})
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+
+		case <-metricsTicker.C:
+			if s.metrics == nil {
+				continue
+			}
+			snap := s.metrics.Latest()
+			msg, _ := json.Marshal(map[string]any{
+				"type": "metrics",
+				"data": map[string]any{
+					"cpuPercent":     snap.CPUPercent,
+					"memoryMB":       snap.MemoryMB,
+					"networkTxBytes": snap.NetworkTxBytes,
+					"networkRxBytes": snap.NetworkRxBytes,
+					"uptimeSeconds":  int64(time.Since(s.startTime).Seconds()),
+					"goroutines":     snap.Goroutines,
+				},
 			})
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {

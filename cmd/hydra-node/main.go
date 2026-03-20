@@ -10,6 +10,9 @@ import (
 	"github.com/hydraterminal/node/internal/node"
 )
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 var cfgFile string
 
 var rootCmd = &cobra.Command{
@@ -31,6 +34,7 @@ var startCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to create node: %w", err)
 		}
+		n.SetVersion(version)
 
 		return n.Run()
 	},

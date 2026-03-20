@@ -56,8 +56,12 @@ type Node struct {
 	submitter *network.Submitter
 	heartbeat *network.Heartbeat
 
-	dataCh chan source.CollectedBatch
+	dataCh  chan source.CollectedBatch
+	version string
 }
+
+// SetVersion sets the build version string.
+func (n *Node) SetVersion(v string) { n.version = v }
 
 // New creates a new Node from the given configuration.
 func New(cfg *config.Config, configPath ...string) (*Node, error) {
@@ -135,6 +139,7 @@ func (n *Node) Run() error {
 
 	// Initialize API server
 	n.apiServer = api.NewServer(n.store, n.broadcaster, n.keyValidator, n.logger)
+	n.apiServer.SetVersion(n.version)
 
 	// System metrics collector — samples CPU, memory, network every 5s
 	n.metricsCollector = metrics.New(5 * time.Second)
@@ -144,6 +149,7 @@ func (n *Node) Run() error {
 	// Control routes are under /control/* on the same port, protected by the node secret.
 	// Pass the pre-created logBuffer so it receives all slog output.
 	n.ctrlServer = control.NewServerWithBuffer(n.scheduler, n.logger, n.restart, n.cfg.Node.Secret, n.logBuffer, n.store, n.metricsCollector, n.cfg, n.configPath)
+	n.ctrlServer.SetVersion(n.version)
 	n.apiServer.MountControl(n.ctrlServer)
 
 	// Public mode: setup network auth, submitter, heartbeat
@@ -308,6 +314,7 @@ func (n *Node) initNetwork() error {
 		n.logger,
 		n.metricsCollector,
 	)
+	n.heartbeat.SetVersion(n.version)
 
 	return nil
 }

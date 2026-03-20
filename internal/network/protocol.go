@@ -45,6 +45,7 @@ type HeartbeatPayload struct {
 	NodeID        string           `json:"nodeId"`
 	Timestamp     time.Time        `json:"timestamp"`
 	Status        string           `json:"status"`
+	Version       string           `json:"version,omitempty"`
 	ActiveSources []string         `json:"activeSources"`
 	Metrics       HeartbeatMetrics `json:"metrics"`
 }

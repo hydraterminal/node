@@ -19,7 +19,11 @@ type Heartbeat struct {
 	startTime     time.Time
 	signalsCount  int
 	metrics       *metrics.Collector
+	version       string
 }
+
+// SetVersion sets the version string included in heartbeat payloads.
+func (h *Heartbeat) SetVersion(v string) { h.version = v }
 
 // NewHeartbeat creates a new heartbeat sender.
 func NewHeartbeat(auth *NodeAuth, activeSources func() []string, logger *slog.Logger, mc *metrics.Collector) *Heartbeat {
@@ -45,6 +49,7 @@ func (h *Heartbeat) Send() error {
 		NodeID:        h.auth.NodeID(),
 		Timestamp:     time.Now().UTC(),
 		Status:        "healthy",
+		Version:       h.version,
 		ActiveSources: h.activeSources(),
 		Metrics: HeartbeatMetrics{
 			SignalsSubmitted: h.signalsCount,

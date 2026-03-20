@@ -20,6 +20,7 @@ type Server struct {
 	keyValidator *auth.KeyValidator
 	logger       *slog.Logger
 	startTime    time.Time
+	version      string
 }
 
 // NewServer creates a new API server.
@@ -189,10 +190,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":    "ok",
+		"version":   s.version,
 		"uptime":    time.Since(s.startTime).String(),
 		"startedAt": s.startTime.UTC().Format(time.RFC3339),
 	})
 }
+
+// SetVersion sets the version string reported in the status endpoint.
+func (s *Server) SetVersion(v string) { s.version = v }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
