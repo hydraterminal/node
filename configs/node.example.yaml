@@ -1,0 +1,107 @@
+# Hydra Node Configuration
+# Copy to ~/.hydra/node.yaml and edit
+
+# Mode: "public" (submit to network, earn rewards) or "private" (personal use)
+mode: private
+
+# Node identity — get these from Platform → Nodes → Create Node
+node:
+  id: ""              # node ID from the platform
+  # Secret is read from HYDRA_NODE_SECRET env var (never stored in this file)
+  # Set it in your .env file or environment: export HYDRA_NODE_SECRET=hnd_...
+
+# Network settings
+network:
+  backendUrl: "https://api.hydra.fast"
+  submissionInterval: 60s
+  heartbeatInterval: 30s
+  batchSize: 100
+
+# Client-facing API server
+server:
+  port: 4001
+  host: "0.0.0.0"
+  domain: ""  # optional custom domain (e.g., "node-a.hydra.fast")
+  rateLimits:
+    public: 60        # requests/min for unauthenticated
+    authenticated: 300 # requests/min for API key holders
+
+# Data sources - enable the ones you have credentials for
+sources:
+  # USGS Earthquakes - no auth needed
+  usgs:
+    enabled: true
+    interval: 5m
+
+  # ADS-B Exchange - requires RapidAPI key
+  adsb:
+    enabled: false
+    interval: 60s
+    apiKeyEnv: "ADSB_API_KEY"
+    apiHostEnv: "ADSB_API_HOST"  # defaults to adsbexchange-com1.p.rapidapi.com
+
+  # AIS Stream - requires API key from aisstream.io
+  ais:
+    enabled: false
+    flushInterval: 60s
+    apiKeyEnv: "AISSTREAM_API_KEY"
+
+  # Pikud HaOref - Israel missile alerts (WebSocket, no auth)
+  oref:
+    enabled: false
+    proxyUrl: ""  # optional proxy for oref.org.il
+
+  # OTX AlienVault - cyber threats (free API key from otx.alienvault.com)
+  cyber:
+    enabled: false
+    interval: 5m
+    apiKeyEnv: "OTX_API_KEY"
+
+  # Airspace restrictions - AWC (no auth) + OpenAIP (optional key)
+  airspace:
+    enabled: false
+    interval: 10m
+    openaipKeyEnv: "OPENAIP_API_KEY"
+
+  # X/Twitter OSINT scraper
+  xtracker:
+    enabled: false
+    interval: 2m
+    accounts:
+      # - "@ABORINT"
+      # - "@IntelDoge"
+      # - "@sentdefender"
+
+  # Telegram channel scraper (no auth needed)
+  telegram:
+    enabled: false
+    interval: 2m
+    channels:
+      # - "ukraine_now"
+      # - "intelslava"
+
+  # Polymarket prediction markets (no auth needed)
+  polymarket:
+    enabled: false
+    marketInterval: 15m
+
+  # MARAD maritime advisories (daily, no auth)
+  maritime:
+    enabled: false
+    interval: 24h
+
+# Local data storage
+storage:
+  dataDir: "~/.hydra/data"
+  retentionHours: 24
+
+# Logging
+logging:
+  level: "info"           # debug, info, warn, error
+  format: "text"          # text or json
+  streamToBackend: false  # send logs to backend for dashboard viewing
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  port: 9090
