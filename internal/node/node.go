@@ -496,9 +496,10 @@ func postsToSignals(posts []source.NormalizedPost) []source.NormalizedSignal {
 			SourceRef:   p.URL,
 			CollectedAt: p.Timestamp,
 			Metadata: map[string]any{
-				"author":   p.Author,
-				"views":    p.Views,
-				"platform": p.Platform,
+				"author":    p.Author,
+				"views":     p.Views,
+				"platform":  p.Platform,
+				"mediaUrls": p.Photos,
 			},
 		})
 	}

@@ -105,6 +105,9 @@ func (s *Submitter) streamSignal(sig source.NormalizedSignal) {
 	if err := json.Unmarshal(respBody, &receipt); err == nil {
 		entry.Status = receipt.Status
 		entry.SignalID = receipt.SignalID
+		if receipt.Reason != "" {
+			entry.Error = receipt.Reason
+		}
 	} else {
 		entry.Status = "new"
 	}
