@@ -1,6 +1,11 @@
-# @hydraterminal/node
+# [@hydraterminal/node](https://github.com/hydraterminal/node)
 
 A standalone intelligence collection node for the [Hydra Network](https://hydra.fast). Pull data from 10+ real-time sources, store it locally, and serve it directly to clients over WebSocket and REST — no middleman.
+
+<img width="1676" height="1018" alt="chrome_yKC5BAXXx9" src="https://github.com/user-attachments/assets/55f1ff8c-aed0-405c-8771-4b5f956e1ee6" />
+
+*fully functional web UI to manage node. selfhosted or managed, browser connects directly to your node.*
+
 
 Run in **public mode** to submit signals to the network and earn (soon). Run in **private mode** for personal use with no network dependencies.
 
