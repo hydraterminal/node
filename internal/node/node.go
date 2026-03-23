@@ -332,6 +332,14 @@ func (n *Node) consumeData(ctx context.Context) {
 				n.logger.Error("failed to store batch", "source", batch.Source, "error", err)
 			}
 
+			// Immediately stream signals to the backend crowdsource pipeline.
+			// This runs concurrently and does not block — each signal is sent
+			// as soon as it arrives, allowing the backend to deduplicate across
+			// all nodes in real-time using embedding similarity.
+			if n.submitter != nil && len(batch.Signals) > 0 {
+				n.submitter.StreamSignals(batch.Signals)
+			}
+
 			if len(batch.Signals) > 0 {
 				n.broadcaster.Send("signal", map[string]any{
 					"signals": batch.Signals,
