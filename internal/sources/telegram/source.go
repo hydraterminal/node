@@ -2,10 +2,13 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,6 +47,7 @@ type Source struct {
 	client   *http.Client
 	channels []string
 	seen     map[string]time.Time
+	dataDir  string
 }
 
 func (s *Source) Name() string                 { return "telegram" }
@@ -59,8 +63,57 @@ func (s *Source) Init(cfg config.SourceConfig) error {
 	}
 	s.client = &http.Client{Timeout: 15 * time.Second}
 	s.channels = normalizeChannels(cfg.Channels)
+	s.dataDir = cfg.DataDir
 	s.seen = make(map[string]time.Time)
+	s.loadSeen()
 	return nil
+}
+
+func (s *Source) seenFile() string {
+	if s.dataDir == "" {
+		return ""
+	}
+	return filepath.Join(s.dataDir, "telegram_seen.json")
+}
+
+func (s *Source) loadSeen() {
+	f := s.seenFile()
+	if f == "" {
+		return
+	}
+	data, err := os.ReadFile(f)
+	if err != nil {
+		return // file doesn't exist yet — fine
+	}
+	var raw map[string]int64
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-2 * time.Hour)
+	for id, ts := range raw {
+		t := time.Unix(ts, 0)
+		if t.After(cutoff) {
+			s.seen[id] = t
+		}
+	}
+	slog.Debug("telegram: loaded seen state", "entries", len(s.seen))
+}
+
+func (s *Source) saveSeen() {
+	f := s.seenFile()
+	if f == "" {
+		return
+	}
+	raw := make(map[string]int64, len(s.seen))
+	for id, t := range s.seen {
+		raw[id] = t.Unix()
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(f), 0755)
+	_ = os.WriteFile(f, data, 0644)
 }
 
 func (s *Source) Start(ctx context.Context, out chan<- source.CollectedBatch) error {
@@ -107,6 +160,7 @@ func (s *Source) Start(ctx context.Context, out chan<- source.CollectedBatch) er
 	}
 
 	batch.Duration = time.Since(start)
+	s.saveSeen()
 	out <- batch
 	return nil
 }

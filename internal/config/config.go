@@ -66,6 +66,8 @@ type SourceConfig struct {
 	Cookies        []string      `yaml:"cookies,omitempty" json:"cookies,omitempty"`
 	Channels       []string      `yaml:"channels,omitempty" json:"channels,omitempty"`
 	MarketInterval time.Duration `yaml:"marketInterval,omitempty" json:"-"`
+	// DataDir is injected at runtime (not stored in YAML) so sources can persist state.
+	DataDir        string        `yaml:"-" json:"-"`
 }
 
 // MarshalJSON serializes SourceConfig with durations as human-readable strings.

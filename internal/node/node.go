@@ -278,6 +278,9 @@ func (n *Node) initSources() ([]source.Source, error) {
 			}
 		}
 
+		// Inject data dir so sources can persist state across restarts.
+		e.cfg.DataDir = n.cfg.Storage.DataDir
+
 		if err := src.Init(e.cfg); err != nil {
 			n.logger.Error("failed to init source, skipping", "source", e.name, "error", err)
 			continue
