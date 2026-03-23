@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hydraterminal/node/internal/config"
 	"github.com/hydraterminal/node/internal/metrics"
+	"github.com/hydraterminal/node/internal/network"
 	"github.com/hydraterminal/node/internal/scheduler"
 	"github.com/hydraterminal/node/internal/store"
 	"gopkg.in/yaml.v3"
@@ -46,7 +47,12 @@ type Server struct {
 	cfg        *config.Config
 	configPath string
 	version    string
+	csLog      *network.CrowdsourceLog
 }
+
+// SetCrowdsourceLog attaches the crowdsource submission log so the control
+// plane can serve it via GET /control/crowdsource-log.
+func (s *Server) SetCrowdsourceLog(log *network.CrowdsourceLog) { s.csLog = log }
 
 // SetVersion sets the version string reported in status and metrics.
 func (s *Server) SetVersion(v string) { s.version = v }
@@ -89,6 +95,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /control/config", s.requireSecret(s.handleGetConfig))
 	mux.HandleFunc("PUT /control/config", s.requireSecret(s.handlePutConfig))
 	mux.HandleFunc("PATCH /control/config", s.requireSecret(s.handlePatchConfig))
+	mux.HandleFunc("GET /control/crowdsource-log", s.requireSecret(s.handleCrowdsourceLog))
 	mux.HandleFunc("/control/logs/stream", s.HandleLogStream)
 }
 
@@ -722,4 +729,22 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) handleCrowdsourceLog(w http.ResponseWriter, r *http.Request) {
+	if s.csLog == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "stats": map[string]int{}})
+		return
+	}
+	entries := s.csLog.Entries()
+	total, newCount, confirmed, errors := s.csLog.Stats()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entries": entries,
+		"stats": map[string]any{
+			"total":     total,
+			"new":       newCount,
+			"confirmed": confirmed,
+			"errors":    errors,
+		},
+	})
 }

@@ -18,6 +18,7 @@ type Submitter struct {
 	store     store.Store
 	batchSize int
 	logger    *slog.Logger
+	csLog     *CrowdsourceLog
 }
 
 // NewSubmitter creates a new network submitter.
@@ -27,8 +28,12 @@ func NewSubmitter(auth *NodeAuth, store store.Store, batchSize int, logger *slog
 		store:     store,
 		batchSize: batchSize,
 		logger:    logger,
+		csLog:     NewCrowdsourceLog(),
 	}
 }
+
+// CrowdsourceLog returns the submission log for use by the control plane.
+func (s *Submitter) CrowdsourceLog() *CrowdsourceLog { return s.csLog }
 
 // SubmitPending reads unsubmitted data from the store and submits it to the backend.
 func (s *Submitter) SubmitPending() error {

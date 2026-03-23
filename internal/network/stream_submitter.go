@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/hydraterminal/node/internal/source"
 )
@@ -22,15 +24,23 @@ type CrowdsourceReceipt struct {
 func (s *Submitter) StreamSignals(signals []source.NormalizedSignal) {
 	for _, sig := range signals {
 		go func(sig source.NormalizedSignal) {
-			if err := s.streamSignal(sig); err != nil {
-				s.logger.Debug("crowdsource stream failed", "sourceRef", sig.SourceRef, "error", err)
-			}
+			s.streamSignal(sig)
 		}(sig)
 	}
 }
 
-// streamSignal sends a single signal to the backend crowdsource endpoint.
-func (s *Submitter) streamSignal(sig source.NormalizedSignal) error {
+// streamSignal sends a single signal to the backend crowdsource endpoint
+// and records the result in the crowdsource log.
+func (s *Submitter) streamSignal(sig source.NormalizedSignal) {
+	start := time.Now()
+
+	entry := CrowdsourceEntry{
+		Time:      start,
+		Title:     sig.Title,
+		SourceRef: sig.SourceRef,
+		Source:    sig.Source,
+	}
+
 	payload := SubmitSignal{
 		Title:       sig.Title,
 		Description: sig.Description,
@@ -49,25 +59,56 @@ func (s *Submitter) streamSignal(sig source.NormalizedSignal) error {
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		entry.Status = "error"
+		entry.Error = fmt.Sprintf("marshal: %s", err)
+		entry.DurationMs = time.Since(start).Milliseconds()
+		s.csLog.Add(entry)
+		s.logger.Debug("crowdsource marshal failed", "sourceRef", sig.SourceRef, "error", err)
+		return
 	}
 
 	url := fmt.Sprintf("%s/nodes/crowdsource", s.auth.BackendURL())
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("new request: %w", err)
+		entry.Status = "error"
+		entry.Error = fmt.Sprintf("new request: %s", err)
+		entry.DurationMs = time.Since(start).Milliseconds()
+		s.csLog.Add(entry)
+		return
 	}
 
-	// Use the auth client which sets node credentials on the request
 	resp, err := s.auth.Do(req)
 	if err != nil {
-		return fmt.Errorf("request: %w", err)
+		entry.Status = "error"
+		entry.Error = err.Error()
+		entry.DurationMs = time.Since(start).Milliseconds()
+		s.csLog.Add(entry)
+		s.logger.Debug("crowdsource request failed", "sourceRef", sig.SourceRef, "error", err)
+		return
 	}
 	defer resp.Body.Close()
 
+	entry.StatusCode = resp.StatusCode
+	entry.DurationMs = time.Since(start).Milliseconds()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("backend returned %d", resp.StatusCode)
+		entry.Status = "error"
+		entry.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody))
+		s.csLog.Add(entry)
+		s.logger.Debug("crowdsource backend error", "sourceRef", sig.SourceRef, "status", resp.StatusCode, "body", string(respBody))
+		return
 	}
 
-	return nil
+	var receipt CrowdsourceReceipt
+	if err := json.Unmarshal(respBody, &receipt); err == nil {
+		entry.Status = receipt.Status
+		entry.SignalID = receipt.SignalID
+	} else {
+		entry.Status = "new"
+	}
+
+	s.csLog.Add(entry)
+	s.logger.Debug("crowdsource submitted", "title", sig.Title, "status", entry.Status, "signalId", entry.SignalID, "duration_ms", entry.DurationMs)
 }

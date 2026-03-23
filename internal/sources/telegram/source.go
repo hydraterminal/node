@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -15,6 +16,24 @@ import (
 )
 
 const maxMessagesPerChannel = 20
+
+// normalizeChannels strips any https://t.me/s/ or https://t.me/ prefix,
+// accepting whatever format the user saved (full URL or bare name).
+func normalizeChannels(raw []string) []string {
+	out := make([]string, 0, len(raw))
+	for _, ch := range raw {
+		ch = strings.TrimSpace(ch)
+		ch = strings.TrimPrefix(ch, "https://t.me/s/")
+		ch = strings.TrimPrefix(ch, "http://t.me/s/")
+		ch = strings.TrimPrefix(ch, "https://t.me/")
+		ch = strings.TrimPrefix(ch, "http://t.me/")
+		ch = strings.Trim(ch, "/")
+		if ch != "" {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
 
 func init() {
 	source.Register("telegram", func() source.Source { return &Source{} })
@@ -39,7 +58,7 @@ func (s *Source) Init(cfg config.SourceConfig) error {
 		s.cfg.Interval = 2 * time.Minute
 	}
 	s.client = &http.Client{Timeout: 15 * time.Second}
-	s.channels = cfg.Channels
+	s.channels = normalizeChannels(cfg.Channels)
 	s.seen = make(map[string]time.Time)
 	return nil
 }
@@ -60,13 +79,31 @@ func (s *Source) Start(ctx context.Context, out chan<- source.CollectedBatch) er
 		}
 	}
 
+	if len(s.channels) == 0 {
+		slog.Debug("telegram: no channels configured, skipping")
+		batch.Duration = time.Since(start)
+		out <- batch
+		return nil
+	}
+
 	for _, channel := range s.channels {
+		chStart := time.Now()
 		posts, err := s.scrapeChannel(ctx, channel)
 		if err != nil {
+			slog.Warn("telegram: channel fetch failed", "channel", channel, "error", err, "duration", time.Since(chStart).Round(time.Millisecond))
 			batch.Errors = append(batch.Errors, fmt.Sprintf("%s: %s", channel, err))
 			continue
 		}
+		newPosts := len(posts)
+		slog.Debug("telegram: channel scraped", "channel", channel, "new_posts", newPosts, "duration", time.Since(chStart).Round(time.Millisecond))
 		batch.Posts = append(batch.Posts, posts...)
+	}
+
+	total := len(batch.Posts)
+	if total > 0 {
+		slog.Info("telegram: poll done", "channels", len(s.channels), "new_posts", total, "errors", len(batch.Errors), "duration", time.Since(start).Round(time.Millisecond))
+	} else {
+		slog.Debug("telegram: poll done", "channels", len(s.channels), "new_posts", 0, "errors", len(batch.Errors), "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	batch.Duration = time.Since(start)
@@ -102,14 +139,14 @@ func (s *Source) scrapeChannel(ctx context.Context, channel string) ([]source.No
 	return s.parseHTML(channel, string(body))
 }
 
-// Regex patterns for HTML parsing
+// Regex patterns for HTML parsing.
+// (?s) enables dotall mode so .* matches across newlines.
 var (
 	messageIDRe = regexp.MustCompile(`data-post="([^/]+)/(\d+)"`)
-	textRe      = regexp.MustCompile(`class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>`)
+	textRe      = regexp.MustCompile(`(?s)class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>`)
 	timeRe      = regexp.MustCompile(`<time[^>]*datetime="([^"]+)"`)
 	viewsRe     = regexp.MustCompile(`class="tgme_widget_message_views"[^>]*>([^<]+)`)
 	photoRe     = regexp.MustCompile(`background-image:url\('([^']+)'\)`)
-	linkRe      = regexp.MustCompile(`href="(https?://[^"]+)"`)
 	htmlTagRe   = regexp.MustCompile(`<[^>]+>`)
 	entityRe    = regexp.MustCompile(`&(amp|lt|gt|quot|#39);`)
 )
@@ -118,8 +155,10 @@ func (s *Source) parseHTML(channel, html string) ([]source.NormalizedPost, error
 	// Split into message blocks
 	blocks := strings.Split(html, `class="tgme_widget_message_wrap`)
 	if len(blocks) <= 1 {
+		slog.Debug("telegram: no message blocks found in HTML", "channel", channel, "html_len", len(html))
 		return nil, nil
 	}
+	slog.Debug("telegram: parsing blocks", "channel", channel, "blocks", len(blocks)-1)
 
 	var posts []source.NormalizedPost
 	for _, block := range blocks[1:] {
