@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -88,6 +89,7 @@ func New(cfg *config.Config, configPath ...string) (*Node, error) {
 	// Wrap with buffer handler so all log output feeds into the live log stream.
 	handler := control.NewBufferHandler(baseHandler, logBuffer)
 	logger := slog.New(handler)
+	slog.SetDefault(logger)
 
 	cfgPath := ""
 	if len(configPath) > 0 {
@@ -302,6 +304,7 @@ func (n *Node) initNetwork() error {
 	)
 
 	n.submitter = network.NewSubmitter(n.nodeAuth, n.store, n.cfg.Network.BatchSize, n.logger)
+	n.ctrlServer.SetCrowdsourceLog(n.submitter.CrowdsourceLog())
 
 	n.heartbeat = network.NewHeartbeat(
 		n.nodeAuth,
@@ -378,6 +381,10 @@ func (n *Node) consumeData(ctx context.Context) {
 						n.broadcaster.Send("tg_message", map[string]any{"messages": []any{p}})
 					}
 				}
+				// Stream posts to the crowdsource pipeline as SOCIAL_MEDIA signals.
+				if n.submitter != nil {
+					n.submitter.StreamSignals(postsToSignals(batch.Posts))
+				}
 			}
 
 			if batch.HasErrors() {
@@ -453,4 +460,44 @@ func (n *Node) restart() error {
 
 	n.logger.Info("restart complete")
 	return nil
+}
+
+// postsToSignals converts social media posts (Telegram/Twitter) to the
+// NormalizedSignal format so they can flow through the crowdsource pipeline.
+func postsToSignals(posts []source.NormalizedPost) []source.NormalizedSignal {
+	sigs := make([]source.NormalizedSignal, 0, len(posts))
+	for _, p := range posts {
+		text := strings.TrimSpace(p.Text)
+		if text == "" {
+			continue
+		}
+		title := text
+		if len(title) > 120 {
+			// Trim at last space before 120 chars for a clean cut
+			if idx := strings.LastIndex(title[:120], " "); idx > 40 {
+				title = title[:idx]
+			} else {
+				title = title[:120]
+			}
+		}
+		src := "TELEGRAM"
+		if p.Platform == "twitter" {
+			src = "TWITTER"
+		}
+		sigs = append(sigs, source.NormalizedSignal{
+			Title:       title,
+			Description: text,
+			Severity:    "LOW",
+			Category:    "SOCIAL_MEDIA",
+			Source:      src,
+			SourceRef:   p.URL,
+			CollectedAt: p.Timestamp,
+			Metadata: map[string]any{
+				"author":   p.Author,
+				"views":    p.Views,
+				"platform": p.Platform,
+			},
+		})
+	}
+	return sigs
 }

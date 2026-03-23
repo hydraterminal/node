@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -111,7 +114,40 @@ func init() {
 	rootCmd.AddCommand(claimRewardsCmd)
 }
 
+// loadDotEnv reads KEY=VALUE pairs from a .env file and sets any that are
+// not already present in the environment. Silently skips missing files.
+func loadDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		v = strings.Trim(strings.TrimSpace(v), `"'`)
+		if k != "" && os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
+	}
+}
+
 func main() {
+	// Load .env from the same directory as the config file (or cwd).
+	// Never overwrites env vars that are already set.
+	loadDotEnv(".env")
+	if cfgFile != "" {
+		loadDotEnv(filepath.Join(filepath.Dir(cfgFile), ".env"))
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
